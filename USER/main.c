@@ -23,10 +23,10 @@ int main()
 	uint16_t i = 0;
 	while(1)
 	{
-		if(i++ == 0)
-		{
-			CanRouter250k.putMsg(tempMsg);
-		}
+		// if(i++ == 0)
+		// {
+		// 	CanRouter250k.putMsg(tempMsg);
+		// }
 		
 		CanRouter250k.runTransmitter();
 		CanRouter250k.runReceiver();
