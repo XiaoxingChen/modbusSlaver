@@ -1,13 +1,14 @@
 #include "CCan.h"
-#include "CUartConsole.h"
+#include "Console.h"
 
 namespace
 {
 	const uint8_t TX_QUEBUF_SIZE = 20;
-	CanTxMsg router500k_txQueBuf[TX_QUEBUF_SIZE];
-	CanTxMsg router250k_txQueBuf[TX_QUEBUF_SIZE];
+	CanTxMsg router1_txQueBuf[TX_QUEBUF_SIZE];
+	CanTxMsg router2_txQueBuf[TX_QUEBUF_SIZE];
 };
-CCanRouter CanRouter250k(CAN1, router250k_txQueBuf, TX_QUEBUF_SIZE, 250000);
+CCanRouter CanRouter1(CAN1, router1_txQueBuf, TX_QUEBUF_SIZE, 250000);
+CCanRouter CanRouter2(CAN2, router2_txQueBuf, TX_QUEBUF_SIZE, 250000);
 
 /**
   * @brief  Constructor
@@ -101,22 +102,6 @@ uint16_t CCanRxMailbox::msgsInQue() const
 
 /**
   * @brief  get a message from rx queue
-	* @Note 	Copy message for 2 times. Not effective.
-	* @param  None
-  * @retval a copy of message
-  */
-CanRxMsg CCanRxMailbox::getMsg()
-{
-	CanRxMsg retMsg = {0xAAAAAAAA}; //std id == 0xAAAAAAAA mean no msg
-	if(rxQue_.elemsInQue() == 0) return retMsg;
-	
-	retMsg = rxQue_.front();
-	rxQue_.pop();
-	return retMsg;
-}
-
-/**
-  * @brief  get a message from rx queue
 	* @Note 	Only copy for one time. We recommand to use this.
 	* @param  Pointer for received message
   * @retval None
@@ -167,6 +152,8 @@ CCanRouter::CCanRouter(CAN_TypeDef* CANx,
 :CANx_(CANx),
 	baudRate_(BaudRate),
 	txOverflowCount_(0),
+	isGpioInitialized_(false),
+	isCanInitialized_(false),
 	txQue_(txQueBuf, txQueSize),
 	mailboxNum_(0)
 {
@@ -177,7 +164,7 @@ CCanRouter::CCanRouter(CAN_TypeDef* CANx,
 	else
 	{
 		Console::Instance()->postErr("CANx_ fault.");
-		while(1);
+		seer_assert(false);
 	}
 	
 }
@@ -193,12 +180,8 @@ void CCanRouter::InitCan()
 	if(CANx_ == CAN2) 
 	{
 		RCC_APB1PeriphClockCmd(RCC_APB1Periph_CAN2, ENABLE);
-		RCC_APB1PeriphResetCmd(RCC_APB1Periph_CAN2, ENABLE);
-		RCC_APB1PeriphResetCmd(RCC_APB1Periph_CAN2, DISABLE);
 	}else if(CANx_ == CAN1)
 	{
-		RCC_APB1PeriphResetCmd(RCC_APB1Periph_CAN1, ENABLE);
-		RCC_APB1PeriphResetCmd(RCC_APB1Periph_CAN1, DISABLE);
 	}
 	
 	//CAN
@@ -208,7 +191,7 @@ void CCanRouter::InitCan()
 	CAN_InitStructure.CAN_AWUM = DISABLE;
 	CAN_InitStructure.CAN_NART = DISABLE;
 	CAN_InitStructure.CAN_RFLM = DISABLE;
-	CAN_InitStructure.CAN_TXFP = DISABLE;
+	CAN_InitStructure.CAN_TXFP = ENABLE;
 	CAN_InitStructure.CAN_Mode = CAN_Mode_Normal;
 
 	CAN_InitStructure.CAN_SJW = CAN_SJW_1tq;
@@ -250,6 +233,7 @@ void CCanRouter::InitCan()
 	CAN_FilterInit(&CAN_FilterInitStructure);
 	for(int i = 0; i < 3; i++)
 		CAN_FIFORelease(CANx_, CAN_Filter_FIFO_);
+	isCanInitialized_ = true;
 }
 
 /**
@@ -284,7 +268,7 @@ void CCanRouter::InitCanGpio(int IOGroup)
 		GPIO_PinSource_BASE = GPIO_PinSource8;
 		GPIO_PinRemapConfig(GPIO_Remap1_CAN1, ENABLE);
 	}
-	else while(1); //undefined!
+	else seer_assert(false); //undefined!
 	
 	/* open clock of MOSI MISO SCK nCS */
 	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOx,  ENABLE);	
@@ -298,6 +282,7 @@ void CCanRouter::InitCanGpio(int IOGroup)
 	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP ; 
 	GPIO_Init(GPIOx, &GPIO_InitStructure);
 	
+	isGpioInitialized_ = true;
 }
 
 /**
@@ -339,7 +324,6 @@ void CCanRouter::runTransmitter()
 void CCanRouter::runReceiver()
 {
 	if(CAN_MessagePending(CANx_, CAN_Filter_FIFO_) == 0) return;
-//	Console::Instance()->printf("get message\r\n");
 	CanRxMsg RxMessage;
 	while(CAN_MessagePending(CANx_, CAN_Filter_FIFO_) != 0)
 	{
@@ -349,12 +333,20 @@ void CCanRouter::runReceiver()
 			if(mailboxTab[i]->isIdEqual(RxMessage))
 			{
 				mailboxTab[i]->pushMsg(RxMessage);
-//				Console::Instance()->printf("Find the rx mailbox\r\n");
 				return;
 			}
 		}
 		//if program goes here, means the router can't find the mailbox for this id.
-//		Console::Instance()->printf("cannot find the rx mailbox\r\n");
+#if 1	//no mailbox message report
+		Console::Instance()->printf("CAN%d cannot find the rx mailbox ", CANx_ == CAN1 ? 1 : 2);
+		if(RxMessage.IDE == CAN_Id_Standard)
+		{
+			Console::Instance()->printf("STD 0x%X\r\n", RxMessage.StdId);
+		}else
+		{
+			Console::Instance()->printf("EXT 0x%X\r\n", RxMessage.ExtId);
+		}
+#endif
 	}
 }
 
@@ -376,6 +368,15 @@ void CCanRouter::putMsg(CanTxMsg& refMsg)
   */
 bool CCanRouter::attachMailbox(CCanRxMailbox* pMailbox)
 {
+		Console::Instance()->printf("CAN%d attaching mailbox: ", CANx_ == CAN1 ? 1 : 2);
+	if(pMailbox->IDE() == CAN_Id_Standard)
+	{
+		Console::Instance()->printf("STD 0x%X...\r\n", pMailbox->stdId());
+	}else
+	{
+		Console::Instance()->printf("EXT 0x%X...\r\n", pMailbox->extId());
+	}
+
 	if(MAX_MAILBOX_NUM <= mailboxNum_) 
 	{
 		Console::Instance()->postErr("Mailbox table overflow");
@@ -386,15 +387,20 @@ bool CCanRouter::attachMailbox(CCanRxMailbox* pMailbox)
 		if(mailboxTab[i]->isIdEqual(pMailbox)) 
 		{
 			if(mailboxTab[i] == pMailbox)
+			{
 				Console::Instance()->printf("Mailbox already attached\r\n");
+				return true;
+			}
 			else
 				Console::Instance()->postErr("Mailbox id conflict");
 			return false;
 		}
 	}
+		
+	Console::Instance()->printf("Attach finished.\r\n");
 	mailboxTab[mailboxNum_] = pMailbox;
 	mailboxNum_++;
-	Console::Instance()->printf("Attach mailbox: %d ok...\r\n", mailboxNum_);
+	
 	return true;
 }
 //end of file

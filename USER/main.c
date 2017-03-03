@@ -1,37 +1,57 @@
 #include "stm32f10x.h"
-#include "CSysTick.h"
-#include "CUartConsole.h"
+#include "Console.h"
 #include "CommonConfig.h"
-#include "CLed.h"
+#include "Timer.h"
 #include "CCan.h"
-#include "CUartCanProbe.h"
+#include "ModbusRtuSlave.h"
+#include "CUsart.h"
+#include "resetMailbox.h"
+#include "array.h"
 CanTxMsg tempMsg;
+
+array<uint8_t, 3> testA = {1,2,3};
 int main()
 {
+	SCB->VTOR = 0x08008000;
 	CommonConfig();
+	BaseTimer::Instance()->initialize();
+	BaseTimer::Instance()->start();
 	
-	CanRouter250k.InitCan();
-	CanRouter250k.InitCanGpio(CCanRouter::GROUP_B8);
-	
-	tempMsg.StdId = 0x00;
-	tempMsg.Data[0] = 0x01;
-	tempMsg.IDE = CAN_Id_Standard;
-	tempMsg.RTR = CAN_RTR_Data;
-	tempMsg.DLC = 8;
-	
-	Console::Instance()->printf("Start..\r\n");
-	uint16_t i = 0;
+	CanRouter1.InitCan();
+	CanRouter1.InitCanGpio(CCanRouter::GROUP_B8);
+
+	Console::Instance()->printf("\r\nApp start..\r\n");
+	ModbusSlave::Instance()->run();
+	resetMailbox::Instance()->attachToRouter(CanRouter1);
 	while(1)
 	{
-		// if(i++ == 0)
-		// {
-		// 	CanRouter250k.putMsg(tempMsg);
-		// }
-		
-		CanRouter250k.runTransmitter();
-		CanRouter250k.runReceiver();
-		uartCanProbe::Instance()->run();
-		Console::Instance()->run();
+		CanRouter1.runTransmitter();
+		CanRouter1.runReceiver();
+		Console::Instance()->runTransmitter();
+		ModbusSlave::Instance()->run();
 	}
 	//return 0;
+}
+/**
+  * @brief  Reports the name of the source file and the source line number
+  *   where the assert_param error has occurred.
+  * @param  file: pointer to the source file name
+  * @param  line: assert_param error line source number
+  * @retval None
+  */
+void assert_failed(uint8_t* file, uint32_t line)
+{ 
+  /* User can add his own implementation to report the file name and line number,
+     ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
+	Timer loopTimer(1000,1000);
+	
+  /* Infinite loop */
+  while (1)
+  {
+		Console::Instance()->runTransmitter();
+		if(loopTimer.isAbsoluteTimeUp())
+		{
+			Console::Instance()->printf("Wrong parameters value: file %s on line %d\r\n", file, line);
+		}
+  }
 }

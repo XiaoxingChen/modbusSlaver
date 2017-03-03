@@ -22,10 +22,12 @@
   */
 
 /* Includes ------------------------------------------------------------------*/
+#include "Timer.h"
+#include "stm32f10x_it.h"
 #ifdef __cplusplus
  extern "C" {
 #endif 
-#include "stm32f10x_it.h"
+
 
 /** @addtogroup STM32F10x_StdPeriph_Template
   * @{
@@ -137,6 +139,7 @@ void PendSV_Handler(void)
   */
 void SysTick_Handler(void)
 {
+	CPUTIMER0_ISR();
 }
 
 /******************************************************************************/

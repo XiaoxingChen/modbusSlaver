@@ -15,11 +15,16 @@ public:
 	uint16_t msgsInQue() const;
 	CanRxMsg getMsg();
 	void getMsg(CanRxMsg*);
-	void pushMsg(const CanRxMsg&);
+	virtual void pushMsg(const CanRxMsg&);
+	void clear() {rxQue_.clear();}
+	
 	bool attachToRouter(CCanRouter&);
 	bool operator == (const CanRxMsg&);
 	bool isIdEqual(const CanRxMsg&);
 	bool isIdEqual(CCanRxMailbox*);
+	bool IDE() {return IDE_;}
+	uint32_t stdId() {return stdId_;}
+	uint32_t extId() {return extId_;}
 	uint8_t getRxOverflowcount(){return rxOverflowCount_;}
 
 private:
@@ -44,6 +49,7 @@ public:
 	void InitCanGpio(int IOGroup);
 	void InitCan();
 	void setBaudrate(uint32_t);
+	bool isInitialized(){return (isGpioInitialized_&&isCanInitialized_);}
 	
 	uint8_t getTxOverflowcount(){return txOverflowCount_;}
 
@@ -60,6 +66,9 @@ public:
 	void runTransmitter();
 	void runReceiver();
 	void putMsg(CanTxMsg&);
+	uint16_t getTxQueFreeSize() {return txQue_.emptyElemsInQue();}
+	uint16_t getMsgsInTxQue() {return txQue_.elemsInQue();}
+	bool isTransmitterIdel();
 
 private:
 	bool attachMailbox(CCanRxMailbox* pMailbox);
@@ -67,6 +76,8 @@ private:
 	uint32_t baudRate_;
 	uint8_t CAN_Filter_FIFO_;
 	uint8_t txOverflowCount_;
+	bool isGpioInitialized_;
+	bool isCanInitialized_;
 
 private:
 	ringque<CanTxMsg> txQue_;
@@ -74,6 +85,7 @@ private:
 	uint16_t mailboxNum_;
 };
 
-extern CCanRouter CanRouter250k;
+extern CCanRouter CanRouter1;
+extern CCanRouter CanRouter2;
 #endif
 //end of file
