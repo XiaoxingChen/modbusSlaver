@@ -35,6 +35,12 @@ class CModbusRtuSlave
 		CModbusRtuSlave();
 		void run();
 	
+#include "ObjectDict.h"	
+		typedef array<uint16_t, INPUT_REG_NUM> inputRegTyp;
+		typedef array<uint16_t, HOLDING_REG_NUM> holdingRegTyp;
+		
+		inputRegTyp& inputReg() {return inputReg_;}
+		holdingRegTyp& holdingReg() {return holdingReg_;}
 	
 	private:
 		bool isFirstIn_;
@@ -44,7 +50,7 @@ class CModbusRtuSlave
 		int decode(uint8_t& func, uint16_t& addr, uint16_t& data);
 		int execute(uint8_t func, uint16_t addr, uint16_t data);
 		void reply();
-	
+		
 		void printWorkBuf()
 		{
 			Console::Instance()->printf("workbuf:");
@@ -54,12 +60,10 @@ class CModbusRtuSlave
 			}
 			Console::Instance()->printf("\r\n");
 		}
-	
-	
+		
 	private:
-		uint16_t slaverId_;
-		static array<uint16_t, 10> inputReg_;
-		static array<uint16_t, 10> holdingReg_;
+		static inputRegTyp inputReg_;
+		static holdingRegTyp holdingReg_;
 		static array<uint8_t, 50> workBuf_;
 		uint16_t workBufMsgLen_;
 };	
